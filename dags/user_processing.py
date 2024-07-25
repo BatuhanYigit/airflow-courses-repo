@@ -10,6 +10,14 @@ from pandas import json_normalize
 from datetime import datetime
 
 
+def _store_user():
+    hook = PostgresHook(postgres_conn_id="postgres")
+    hook.copy_expert(
+        sql="COPY users FROM stdin WITH DELIMITER as ','",
+        filename="/tmp/processed_user.csv",
+    )
+
+
 def _process_user(ti):
     user = ti.xcom_pull(task_ids="extract_user")
     user = user["results"][0]
@@ -24,14 +32,6 @@ def _process_user(ti):
         }
     )
     processed_user.to_csv("/tmp/processed_user.csv", index=None, header=False)
-
-
-def _store_user():
-    hook = PostgresHook(postgres_conn_id="postgres")
-    hook.copy_expert(
-        sql="COPY users FROM stdin WITH DELIMITER as ','",
-        filename="/tmp/processed_user.csv",
-    )
 
 
 with DAG(
@@ -68,6 +68,6 @@ with DAG(
 
     process_user = PythonOperator(task_id="process_user", python_callable=_process_user)
 
-    extract_user >> process_user
-
     store_user = PythonOperator(task_id="store_user", python_callable=_store_user)
+
+    create_table >> is_api_available >> extract_user >> process_user >> store_user
